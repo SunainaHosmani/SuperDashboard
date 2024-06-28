@@ -1,9 +1,10 @@
-create or replace view KSFPA.ONLINE_UGAM_PVT.PICK_PACK_SUPER(
+create or replace view KSFPA.ONLINE_UGAM_PVT.PICK_PACK_PRODUCTIVITY_SUPER(
 	ORDER_DATE,
 	FY_PW,
 	STORE,
 	STORE_NAME,
 	STATE,
+	ORDER_TYPE,
 	TOTAL_PICKING_TIME_MIN,
 	TOTAL_ORDERS_PICKED,
 	TOTAL_ITEMS_PICKED,
@@ -11,25 +12,18 @@ create or replace view KSFPA.ONLINE_UGAM_PVT.PICK_PACK_SUPER(
 	TOTAL_PACKING_MIN,
 	TOTAL_ITEMS_PACKED,
 	TOTAL_CARTONS_PACKED,
-	PICKING_EFFICIENCY_PER_ORDER_MIN,
-	PICKING_EFFICIENCY_PER_ITEM_PICKED_MIN,
-	PICKING_EFFICIENCY_PER_ITEM_REQUIRED_MIN,
-	PACKING_EFFICIENCY_PER_ITEM_MIN,
-	PACKING_EFFICIENCY_PER_CARTON_MIN,
 	ADDITIONAL_TIME_FOR_ITEMS_PACKED_MIN,
 	TOTAL_FULFILLMENT_TIME_MIN,
-	HOURS_WORKED,
-	ORDER_TYPE
+	HOURS_WORKED
 ) as
 
-
-
 SELECT 
-    DATE("Order Date") AS ORDER_DATE,
+    DATE("Date") AS ORDER_DATE,
      FY_PW,
 	"Store" as STORE,
     "Store Name" AS STORE_NAME,
     "State" as State,
+    ORDER_TYPE,
     SUM("Total Picking Time (min)") AS TOTAL_PICKING_TIME_MIN,
     SUM("Total Orders Picked") AS TOTAL_ORDERS_PICKED,
     SUM("Total Items Picked") AS TOTAL_ITEMS_PICKED,
@@ -37,17 +31,14 @@ SELECT
     SUM("Total Packing Time (min)")  AS TOTAL_PACKING_MIN,
     SUM("Total Items Packed") AS TOTAL_ITEMS_PACKED,
     SUM("Total Cartons Packed") AS TOTAL_CARTONS_PACKED,
-    AVG("Picking Efficiency Per Order (min)") AS PICKING_EFFICIENCY_PER_ORDER_MIN,
-    AVG("Picking Efficiency Per Item Picked (min)") AS PICKING_EFFICIENCY_PER_ITEM_PICKED_MIN,
-    AVG("Picking Efficiency Per Item Required (min)") AS PICKING_EFFICIENCY_PER_ITEM_REQUIRED_MIN,
-    AVG("Packing Efficiency Per Item (min)") AS PACKING_EFFICIENCY_PER_ITEM_MIN,
-    AVG("Packing Efficiency Per Carton (min)") AS PACKING_EFFICIENCY_PER_CARTON_MIN,
+    --AVG("Picking Efficiency Per Order (min)") AS PICKING_EFFICIENCY_PER_ORDER_MIN,
+    --AVG("Picking Efficiency Per Item Picked (min)") AS PICKING_EFFICIENCY_PER_ITEM_PICKED_MIN,
+    --AVG("Picking Efficiency Per Item Required (min)") AS PICKING_EFFICIENCY_PER_ITEM_REQUIRED_MIN,
+    --AVG("Packing Efficiency Per Item (min)") AS PACKING_EFFICIENCY_PER_ITEM_MIN,
+    --AVG("Packing Efficiency Per Carton (min)") AS PACKING_EFFICIENCY_PER_CARTON_MIN,
     SUM("Additional Time For Items Packed (min)") AS ADDITIONAL_TIME_FOR_ITEMS_PACKED_MIN,
     SUM((NVL("Total Picking Time (min)",0) + NVL("Total Packing Time (min)",0) + NVL("Additional Time For Items Packed (min)",0))) AS TOTAL_FULFILLMENT_TIME_MIN,
-    TOTAL_FULFILLMENT_TIME_MIN/60 as Hours_Worked,
-    CASE WHEN RTRIM(LTRIM(CO.CUSTOMERORDERTYPE)) = 'CAC' THEN 'CC' 
-    WHEN CO.CUSTOMERORDERTYPE = 'STD' THEN 'HD'
-    END AS ORDER_TYPE
+    TOTAL_FULFILLMENT_TIME_MIN/60 as Hours_Worked
 
 FROM
     (SELECT 
@@ -71,7 +62,7 @@ FROM
      		ROUND(PAC.PackingEfficiencyPerItem,2) AS "Packing Efficiency Per Item (min)",
      		PAC.CartonsPacked AS "Total Cartons Packed",
      		PAC.PackingEfficiencyPerCarton AS "Packing Efficiency Per Carton (min)",
-     		ROUND((PAC.ItemsPacked  * 13.2) / 60, 2) AS "Additional Time For Items Packed (min)" --* $AdditionalTimeAllocationPerItemPackedInSec = 13.213.2 
+     		ROUND((PAC.ItemsPacked  * 3.97) / 60, 2) AS "Additional Time For Items Packed (min)" --* $AdditionalTimeAllocationPerItemPackedInSec = 13.213.2 
      		
      FROM KSF_SOPHIA_DATA_INTELLIGENCE_HUB_PROD.ORDER_MANAGEMENT.FACT_ORDER_DETAIL FOD
      FULL OUTER JOIN KSF_SOPHIA_DATA_INTELLIGENCE_HUB_PROD.COMMON_DIMENSIONS.DIM_LOCATION FS 
@@ -201,10 +192,10 @@ FROM
                           COUNT(1) AS CartonsPacked  
                           FROM
                               (SELECT sc.Str_id,--5
-                               	  TO_DATE(SC.DO_PACKING) AS "DATE",
+                               	  TO_DATE(Sc.DO_packing) AS "DATE",
                                   OrderID,
                                   (CASE 
-                                  WHEN (ROUND(CAST(DATEDIFF(SECOND, sp.DO_Created, sp.DO_Modified) AS float)/60, 2)) > 90 THEN (0.5 * CartonNumOfItems) / (Select Count(1) from KSFPA.OMS.SHIPMENTCARTON where StorePackID = sc.StorePackID) 
+                                  WHEN (ROUND(CAST(DATEDIFF(SECOND, sp.DO_Created, sp.DO_Modified) AS float)/60, 2)) > 240 THEN (0.5 * CartonNumOfItems) / (Select Count(1) from KSFPA.OMS.SHIPMENTCARTON where StorePackID = sc.StorePackID) 
                                   -- If the calculated pack time per pack run exceeds the MaxPackingTimePerPackRun = 90, then use the DefaultPackingTimePerItem * CartonNumOfItems
 								  ELSE (ROUND(CAST(DATEDIFF(SECOND, sp.DO_Created, sp.DO_Modified) AS float)/60, 2)) / (Select Count(1) from KSFPA.OMS.SHIPMENTCARTON where StorePackID = sc.StorePackID) END) AS PackingTime,  
                                   CartonNumOfItems,
@@ -213,7 +204,7 @@ FROM
                                   JOIN KSFPA.OMS.STOREPACK sp 
                                   ON sp.StorePackID = sc.StorePackID
                                   WHERE (COALESCE(CartonNumOfItems, 0) > 0) 
-                                  AND COALESCE(sc.StorePackID,0) > 0
+                                  AND COALESCE(sc.StorePackID,0) > 0          
                                ) PACKING GROUP BY 1,2,3
                       ) AS PackingTemp  
               LEFT JOIN KSF_SOPHIA_DATA_INTELLIGENCE_HUB_PROD.COMMON_DIMENSIONS.DIM_DATE DD
@@ -222,12 +213,11 @@ FROM
               GROUP BY 1,2,3,PackingTime,ItemsPacked,CartonsPacked
              ) PAC ON FOD.DD_ORDERID = PAC.ORDERID AND FS.LOCATION_CODE = PAC.Str_ID AND PIC."DATE" <= PAC."DATE" 
      
-     	WHERE FS.LOCATION_CODE NOT IN (1000)
+     	WHERE FS.LOCATION_CODE NOT IN (1000,1295,1296,1297,1298,1299,9995,9996,9997,9998,9999,1194)
      	AND FS.TRADING_STATUS = 'Open'
 
     ) Total
- JOIN (SELECT DISTINCT(ORDERID),CUSTOMERORDERTYPE FROM KSFPA.OMS.CUSTOMERORDER) CO
+ JOIN (SELECT DISTINCT(ORDERID),CUSTOMERORDERTYPE as ORDER_TYPE FROM KSFPA.OMS.CUSTOMERORDER) CO
  ON TOTAL."Order ID" = CO.ORDERID 
- --WHERE DATE(ORDER_DATE) >= '2024-01-01'
-GROUP BY FY_PW,"Store", "Store Name", CO.CUSTOMERORDERTYPE, ORDER_DATE, State
+GROUP BY FY_PW,"Store", "Store Name", ORDER_DATE, State, ORDER_TYPE
 ORDER BY FY_PW,1,2,3,4,5 desc;
